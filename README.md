@@ -1,3 +1,7 @@
+Yitong wrote:
+run the program on epinions:
+python main_v2.py --data-dir ./data/DropoutNet_epin/ --num_epoch 5 --lr .05 --eval-every 20 --model-select 20 10 --dropout .5
+
 
 <p align="center">
 <a href="https://layer6.ai/"><img src="https://github.com/layer6ai-labs/DropoutNet/blob/master/logs/logobox.jpg" width="180"></a>
