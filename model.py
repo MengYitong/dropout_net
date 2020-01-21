@@ -31,9 +31,9 @@ def dense_batch_fc_tanh(x, units, phase, scope, do_norm=False):
                 scale=True,
                 is_training=phase,
                 scope=scope + '_bn')
-            return tf.nn.tanh(h2, scope + '_tanh')
+            return tf.nn.tanh(h2, scope + '_tanh'),h1_w,h1_b
         else:
-            return tf.nn.tanh(h1, scope + '_tanh')
+            return tf.nn.tanh(h1, scope + '_tanh'),h1_w,h1_b
 
 
 class DeepCF:
@@ -72,6 +72,10 @@ class DeepCF:
 
 
         # outputs in the model
+        self.u_w=[None]*len(self.model_select)
+        self.u_b = [None] * len(self.model_select)
+        self.v_w=[None]*len(self.model_select)
+        self.v_b = [None] * len(self.model_select)
         self.u_emb_w=None
         self.preds = None
         self.updates = None
@@ -121,10 +125,14 @@ class DeepCF:
 
         u_last = u_concat
         v_last = v_concat
-        for ihid, hid in enumerate(self.model_select):
-            u_last = dense_batch_fc_tanh(u_last, hid, self.phase, 'user_layer_%d' % (ihid + 1), do_norm=True)
-            v_last = dense_batch_fc_tanh(v_last, hid, self.phase, 'item_layer_%d' % (ihid + 1), do_norm=True)
+        cnt=0
 
+        for ihid, hid in enumerate(self.model_select):
+            print(cnt,':',ihid,', ', hid)
+            u_last,self.u_w[cnt],self.u_b[cnt] = dense_batch_fc_tanh(u_last, hid, self.phase, 'user_layer_%d' % (ihid + 1), do_norm=False)#do_norm=Ture
+            v_last,self.v_w[cnt],self.v_b[cnt] = dense_batch_fc_tanh(v_last, hid, self.phase, 'item_layer_%d' % (ihid + 1), do_norm=False)#do_norm=Ture
+            cnt=cnt+1
+        # exit()
         with tf.variable_scope("self.U_embedding"):
             u_emb_w = tf.Variable(tf.truncated_normal([u_last.get_shape().as_list()[1], self.rank_out], stddev=0.01),
                                   name='u_emb_w')
@@ -136,7 +144,10 @@ class DeepCF:
         with tf.variable_scope("V_embedding"):
             v_emb_w = tf.Variable(tf.truncated_normal([v_last.get_shape().as_list()[1], self.rank_out], stddev=0.01),
                                   name='v_emb_w')
+            self.v_emb_w = v_emb_w
             v_emb_b = tf.Variable(tf.zeros([1, self.rank_out]), name='v_emb_b')
+            self.v_emb_b = v_emb_b
+            self.v_last=v_last
             self.V_embedding = tf.matmul(v_last, v_emb_w) + v_emb_b
 
         with tf.variable_scope("loss"):
@@ -147,7 +158,8 @@ class DeepCF:
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             # Ensures that we execute the update_ops before performing the train_step
-            self.updates = tf.train.MomentumOptimizer(self.lr_placeholder, 0.9).minimize(self.loss)
+            # self.updates = tf.train.MomentumOptimizer(self.lr_placeholder, 0.9).minimize(self.loss)
+            self.updates = tf.train.AdamOptimizer(learning_rate=self.lr_placeholder).minimize(self.loss)
 
     def build_predictor(self, recall_at, num_candidates):
         """

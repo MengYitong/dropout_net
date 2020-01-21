@@ -76,7 +76,7 @@ class EvalData:
         _test_ij_for_inf = [(t[0], t[1]) for t in test_triplets if t[1] in self.test_item_ids_map]
         # test_user_ids
         self.test_user_ids = np.unique(test_triplets['uid'])
-        print('self.test_user_ids:',self.test_user_ids)
+        # print('self.test_user_ids:',self.test_user_ids)
         # test_user_ids_map
         self.test_user_ids_map = {user_id: i for i, user_id in enumerate(self.test_user_ids)}
 

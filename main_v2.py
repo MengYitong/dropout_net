@@ -6,9 +6,10 @@ import datetime
 from sklearn import datasets
 import data
 import model
-
+import pickle
 import argparse
 import os
+from datetime import datetime
 
 n_users = 1024
 n_items = 11601
@@ -19,24 +20,25 @@ def main():
     checkpoint_path = args.checkpoint_path
     tb_log_path = args.tb_log_path
     model_select = args.model_select
+    num_epoch = args.num_epoch
 
     rank_out = args.rank
     user_batch_size = 100
-    n_scores_user = 20#2500
-    data_batch_size = 102
+    n_scores_user = 2500
+    data_batch_size = args.batch_size#102
     dropout = args.dropout
     recall_at = [20,50]#range(50, 550, 50)
     eval_batch_size = 1000
     max_data_per_step = 2500000
     eval_every = args.eval_every
-    num_epoch = 20
+    # num_epoch = 20
 
     _lr = args.lr
-    _decay_lr_every = 50
-    _lr_decay = 0.1
+    _decay_lr_every = 200
+    _lr_decay = 0.5
 
     experiment = '%s_%s' % (
-        datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S'),
+        datetime.now().strftime('%Y-%m-%d-%H:%M:%S'),
         '-'.join(str(x / 100) for x in model_select) if model_select else 'simple'
     )
     _tf_ckpt_file = None if checkpoint_path is None else checkpoint_path + experiment + '/tf_checkpoint'
@@ -100,6 +102,7 @@ def main():
         n_batch_trained = 0
         best_step = 0
         for epoch in range(num_epoch):
+            print('epoch:',epoch)
             np.random.shuffle(row_index)
             for b in utils.batch(row_index, user_batch_size):
                 n_step += 1
@@ -139,7 +142,7 @@ def main():
                         perm_item = np.random.permutation(len(batch_perm))[:n_to_drop]
                         batch_v_pref = np.copy(batch_items)
                         batch_u_pref = np.copy(batch_users)
-                        batch_v_pref[perm_user] = v_pref_last
+                        batch_v_pref[perm_user] = v_pref_last # set drop_out to be 0
                         batch_u_pref[perm_item] = u_pref_last
                     else:
                         batch_v_pref = batch_items
@@ -154,8 +157,8 @@ def main():
                     # print('item_content[batch_items, :] is nan:',np.isnan(np.sum(item_content[batch_items, :])))
                     # print('target_scores[batch_perm]:',target_scores[batch_perm])
 
-                    preds, _, loss_out,u_emb_w,u_emb_b = sess.run(
-                        [dropout_net.preds, dropout_net.updates, dropout_net.loss,dropout_net.u_emb_w, dropout_net.u_emb_b],
+                    preds, _, loss_out,u_w,u_b,u_emb_w,u_emb_b,v_w,v_b,v_emb_w,v_emb_b,v_last= sess.run(
+                        [dropout_net.preds, dropout_net.updates, dropout_net.loss,dropout_net.u_w,dropout_net.u_b,dropout_net.u_emb_w, dropout_net.u_emb_b,dropout_net.v_w,dropout_net.v_b,dropout_net.v_emb_w,dropout_net.v_emb_b,dropout_net.v_last],
                         feed_dict={
                             dropout_net.Uin: u_pref_expanded[batch_u_pref, :],
                             dropout_net.Vin: v_pref_expanded[batch_v_pref, :],
@@ -166,8 +169,15 @@ def main():
                             dropout_net.phase: 1
                         }
                     )
-                    print('u_emb_w:', u_emb_w.shape)
-                    print('u_emb_b:', u_emb_b.shape)
+                    # print('v_last:',v_last)
+                    # print('u_w[0]:',u_w[0])
+                    # print('u_b[0]:', u_b[0])
+                    # print('u_w[1]:', u_w[1])
+                    # print('u_b[1]:', u_b[1])
+                    # print('u_emb_w:', u_emb_w.shape)
+                    # print('u_emb_b:', u_emb_b.shape)
+                    # print('v_emb_w:', v_emb_w.shape)
+                    # print('v_emb_b:', v_emb_b.shape)
                     # print('V_embedding:', V_embedding.shape)
                     # print('preds:',preds)
                     if np.isnan(loss_out):
@@ -177,7 +187,7 @@ def main():
                         raise Exception('f is nan')
 
                 n_batch_trained += len(data_batch)
-                if n_step % _decay_lr_every == 0:
+                if n_step % _decay_lr_every == 0: # learning rate decay
                     _lr = _lr_decay * _lr
                     print('decayed lr:' + str(_lr))
                 if n_step % eval_every == 0:
@@ -218,6 +228,16 @@ def main():
                     recall_summary = tf.Summary(value=summaries)
                     if train_writer is not None:
                         train_writer.add_summary(recall_summary, n_step)
+
+        now = datetime.now()
+
+        # print("now =", now)
+        # dd/mm/YY H:M:S
+        dt_string = now.strftime("%Y%m%d_%H%M%S")
+        # print("date and time =", dt_string)
+        with open('./result/results'+dt_string+'.pkl', 'w') as f:  # Python 3: open(..., 'wb')
+            pickle.dump([u_w,u_b,u_emb_w,u_emb_b,v_w,v_b,v_emb_w,v_emb_b], f)
+            print('result saved.')
 
 
 def load_data(data_path):
@@ -266,7 +286,7 @@ def load_data(data_path):
     #     dtype=[('uid', np.int32), ('iid', np.int32), ('inter', np.int32), ('date', np.int32)])
     train = pd.read_csv(train_file, delimiter=",", header=0,usecols=[0, 1, 2] , dtype=np.int32).values.ravel().view(
         dtype=[('uid', np.int32), ('iid', np.int32), ('inter', np.int32)])
-    print('train:',train)
+    # print('train:',train)
     # exit()
     dat['user_indices'] = np.unique(train['uid'])
     timer.toc('read train triplets %s' % train.shape).tic()
@@ -294,14 +314,16 @@ if __name__ == "__main__":
     parser.add_argument('--tb-log-path', type=str, default=None,
                         help='path to dump TensorBoard logs')
     parser.add_argument('--model-select', nargs='+', type=int,
-                        default=[80, 40],#800,400
+                        default=[10,5],#800,400
                         help='specify the fully-connected architecture, starting from input,'
                              ' numbers indicate numbers of hidden units',
                         )
-    parser.add_argument('--rank', type=int, default=200, help='output rank of latent model')
+    parser.add_argument('--rank', type=int, default=500, help='output rank of latent model')
     parser.add_argument('--dropout', type=float, default=0.5, help='DropoutNet dropout')
-    parser.add_argument('--eval-every', type=int, default=2, help='evaluate every X user-batch')
+    parser.add_argument('--eval-every', type=int, default=10, help='evaluate every X user-batch')
     parser.add_argument('--lr', type=float, default=0.005, help='starting learning rate')
+    parser.add_argument('--num_epoch', type=int, default=50, help='number of training epochs')
+    parser.add_argument('--batch_size', type=int, default=100, help='number of training epochs')
 
     args = parser.parse_args()
     main()
