@@ -10,9 +10,13 @@ import pickle
 import argparse
 import os
 from datetime import datetime
+#epinions
+# n_users = 1024
+# n_items = 11601
 
-n_users = 1024
-n_items = 11601
+#movielens-1m
+n_users=6038
+n_items=3395
 
 
 def main():
